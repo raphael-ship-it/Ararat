@@ -13,10 +13,6 @@ import FileEditorContainer from "../components/server/files/FileEditorConatiner"
 import NotFound from '../components/NotFound'
 import Cookies from 'js-cookie';
 import SideBar from '../components/Sidebar'
-import Testing from '../components/dashboard/Testing'
-
-
-import DashboardNewContainer from '../components/dashboard/DashboardNewContainer'
 import ServerNewContainer from "../components/server/ServerNewContainer";
 function AppRouter() {
 
@@ -30,10 +26,7 @@ function AppRouter() {
     <Router>
       <Switch>
         <Route exact path="/">
-          {checkAuth() ? <DashboardNewContainer /> : <Redirect to="/login" />}
-        </Route>
-        <Route exact path="/new">
-          {checkAuth() ? <DashboardNewContainer /> : <Redirect to="/login" />}
+          {checkAuth() ? <DashboardContainer /> : <Redirect to="/login" />}
         </Route>
         <Route exact path = "/server/:uuid">
           {checkAuth() ? <ServerContainer /> : <Redirect to="/login" />}
@@ -49,7 +42,6 @@ function AppRouter() {
         </Route>
 
         <Route exact path="/login" exact component={() => <AuthContainer />} />
-        <Route exact path="/testing" exact component={() => <Testing />} />
         <Route exact path="/sidebar" exact component={() => <SideBar />} />
 
 

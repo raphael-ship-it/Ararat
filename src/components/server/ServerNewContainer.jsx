@@ -6,8 +6,13 @@ import Navigation from '../Navigation'
 import { Bar } from 'react-chartjs-2';
 import prettyBytes from "pretty-bytes"
 import Header from '../Header'
-
+import getServerType from '../../api/server/getServerType'
 import Cookies from 'js-cookie'
+import { Terminal } from 'xterm'
+import { FitAddon } from 'xterm-addon-fit'
+import { AttachAddon } from 'xterm-addon-attach'
+import getServerResources from "../../api/server/resources/getServerResources"
+
 function ServerNewContainer() {
   const { uuid } = useParams()
   var [server_data, setServerData] = useState(() => {
@@ -19,11 +24,74 @@ function ServerNewContainer() {
   var [memory_usage, setMemoryUsage] = useState(() => {
     return (null)
   })
+  var [server_type, setServerType] = useState(() => {
+    return(null)
+  })
+  var [sock, setSock] = useState(() => {
+    return({})
+  })
+  var [input, setInput] = useState(() => {
+    return('')
+  })
   useEffect(() => {
     getServer(uuid, function (response) {
       document.title = `${response.attributes.name} | Console`
       console.log(response)
       setServerData(response)
+      getServerType(uuid, function(type){
+        setServerType(type)
+        if (type == "Minecraft"){
+          try{
+            const terminal = new Terminal({
+              disableStdin: true,
+              theme:{
+                background: '#1e1e1e'
+              }
+            })
+            const fitAddon = new FitAddon()
+            terminal.loadAddon(fitAddon)
+            const terminalContainer = document.getElementById('console')
+            terminal.open(terminalContainer)
+
+   
+            var consoleSocket = new WebSocket(`wss://ararat-backend.hyehosting.com/server/minecraft/console?server=${uuid}`)
+            setSock(consoleSocket)
+            //fitAddon.fit()
+            window.onresize = () => {
+              //fitAddon.fit()
+            }
+            consoleSocket.onmessage = (e) => {
+              if (e.data == "ERR_JWT_NOT_VALID"){
+                document.location.reload()
+              }
+              console.log(e.data)
+              terminal.writeln(e.data)
+            }
+          } catch (error){
+            console.log(error)
+          }
+        }
+        if (type == "N-VPS"){
+          try {
+            const terminal = new Terminal({})
+            const fitAddon = new FitAddon()
+            const attachAddon = new AttachAddon(new WebSocket('wss://ararat-backend.hyehosting.com/server/n-vps/console?server=' + response.attributes.uuid.replace(/[0-9]/g, '').replace(/[^a-zA-Z ]/g, "")))
+            terminal.loadAddon(fitAddon)
+            terminal.loadAddon(attachAddon)
+            const terminalContainer = document.getElementById('console')
+            terminal.open(terminalContainer)
+            fitAddon.fit()
+            window.onresize = () => {
+              var checkTerminalContainer = document.getElementById('console')
+              if (checkTerminalContainer){
+                fitAddon.fit()
+              }
+            }
+          } catch(error){
+            console.log(error)
+          }
+        }
+      })
     })
   }, [])
   
@@ -216,42 +284,67 @@ function ServerNewContainer() {
           }
         });
         function getserverWS(myChartss, myChartRam) {
-          var ws = new window.WebSocket(`wss://ararat-backend.hyehosting.com/server/minecraft/resws?server=${uuid}&token=${Cookies.get('token')}`)
-          ws.onmessage = function (event) {
-            if (!typeof event.data == 'object') return;
-            if (!JSON.parse(event.data).args) return;
-            try {
-              getServer(uuid, function (response) {
+          getServerType(uuid, function(type){
+            console.log('type is '+type)
+            if (type == "Minecraft"){
+              var ws = new window.WebSocket(`wss://ararat-backend.hyehosting.com/server/resws?server=${uuid}&token=${Cookies.get('token')}`)
+              ws.onmessage = function (event) {
+                if (!typeof event.data == 'object') return;
+                if (!JSON.parse(event.data).args) return;
                 try {
-                  const d = JSON.parse(JSON.parse(event.data).args[0])
-                  const cpu_usage = document.getElementById('cpu-numbers')
-                  var current_cpu_1 = d.cpu_absolute * 100
-                  var real_cpu = current_cpu_1 / response.attributes.limits.cpu
-                  if (real_cpu > 100) {
-                    var real_cpu = 100
-                  }
-                  setCpuUsage(`${(real_cpu).toFixed(2)}%`)
-                  if (parseFloat(prettyBytes(d.memory_bytes, { binary: 'true' })) > parseFloat(parseFloat(prettyBytes(response.attributes.limits.memory * 1048576, { binrary: true })))) {
-                    setMemoryUsage(prettyBytes(response.attributes.limits.memory * 1048576, { binary: 'true' }) + " / " + prettyBytes(response.attributes.limits.memory * 1048576, { binary: 'true' }))
-                  } else {
-                    setMemoryUsage(prettyBytes(d.memory_bytes, { binary: 'true' }) + " / " + prettyBytes(response.attributes.limits.memory * 1048576, { binary: 'true' }))
-                  }
-                  myChartss.data.datasets[0].data.push((real_cpu.toFixed(2)))
+                  getServer(uuid, function (response) {
+                    try {
+                      const d = JSON.parse(JSON.parse(event.data).args[0])
+                      const cpu_usage = document.getElementById('cpu-numbers')
+                      var current_cpu_1 = d.cpu_absolute * 100
+                      var real_cpu = current_cpu_1 / response.attributes.limits.cpu
+                      if (real_cpu > 100) {
+                        var real_cpu = 100
+                      }
+                      setCpuUsage(`${(real_cpu).toFixed(2)}%`)
+                      if (parseFloat(prettyBytes(d.memory_bytes, { binary: 'true' })) > parseFloat(parseFloat(prettyBytes(response.attributes.limits.memory * 1048576, { binrary: true })))) {
+                        setMemoryUsage(prettyBytes(response.attributes.limits.memory * 1048576, { binary: 'true' }) + " / " + prettyBytes(response.attributes.limits.memory * 1048576, { binary: 'true' }))
+                      } else {
+                        setMemoryUsage(prettyBytes(d.memory_bytes, { binary: 'true' }) + " / " + prettyBytes(response.attributes.limits.memory * 1048576, { binary: 'true' }))
+                      }
+                      myChartss.data.datasets[0].data.push((real_cpu.toFixed(2)))
+                      myChartss.data.datasets[0].data.shift()
+                      myChartss.update()
+                      myChartRam.data.datasets[0].data.push(parseFloat(prettyBytes(d.memory_bytes, { binary: 'true' })))
+                      myChartRam.data.datasets[0].data.shift()
+                      myChartRam.update()
+                      console.log(d)
+                    } catch (error) {
+                      console.log(error)
+                    }
+                  })
+                } catch (e) {
+                  console.log(e)
+                }
+      
+              }
+            }
+            if (type== "N-VPS"){
+              //var ws = new window.WebSocket(`wss://ararat-backend.hyehosting.com/server/resws?server=${response.attributes.uuid}&token=${Cookies.get('token')}`)
+              setInterval(function(){
+                getServerResources(response.attributes.identifier, response.attributes.uuid).then(function(e){
+                  console.log('UPDATING')
+                  console.log(e)
+                  setCpuUsage(e.attributes.resources.cpu_absolute + '%')
+                  myChartss.data.datasets[0].data.push((e.attributes.resources.cpu_absolute))
                   myChartss.data.datasets[0].data.shift()
                   myChartss.update()
-                  myChartRam.data.datasets[0].data.push(parseFloat(prettyBytes(d.memory_bytes, { binary: 'true' })))
+                  setMemoryUsage(prettyBytes(e.attributes.resources.memory_bytes, {binary: 'true'}))
+                  myChartRam.data.datasets[0].data.push(parseFloat(prettyBytes(e.attributes.resources.memory_bytes, {binary: 'true'})))
                   myChartRam.data.datasets[0].data.shift()
                   myChartRam.update()
-                  console.log(d)
-                } catch (error) {
-                  console.log(error)
                 }
-              })
-            } catch (e) {
-              console.log(e)
+                )
+              }, 2000)
+
             }
-  
-          }
+          })
+
         }
         getserverWS(myChart, myChart2)
       })
@@ -261,9 +354,22 @@ function ServerNewContainer() {
       ecommerceLineS1()
     });
   }, [])
-
+  function handleInputChanged(event){
+    setInput(event.target.value)
+  }
+  function doWebsocket(event){
+    event.preventDefault()
+    var e = input
+    var term = sock
+    term.send(e)
+    console.log(e)
+    setInput('')
+  }
   return (
     <div>
+         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/xterm/3.14.5/xterm.min.css"
+                    integrity="sha512-iLYuqv+v/P4u9erpk+KM83Ioe/l7SEmr7wB6g+Kg1qmEit8EShDKnKtLHlv2QXUp7GGJhmqDI+1PhJYLTsfb8w=="
+                    crossorigin="anonymous" referrerpolicy="no-referrer" />
       <base href="../" />
       <meta charSet="utf-8" />
       {/* Fav Icon  */}
@@ -359,6 +465,11 @@ function ServerNewContainer() {
                         </div>{/* .col */}
 
                       </div>{/* .row */}
+                      <div id="console"></div>
+                      {server_type == "Minecraft" ?                       <form onSubmit={doWebsocket.bind(this)}>
+                                                <input style={{ width: '100%' }} type="text" className="form-control" placeholder="Type a command..." value={input} onChange={handleInputChanged.bind(this)} />
+                                            </form> : "" }
+
                     </div>{/* .nk-block */}
                   </div>
                 </div>
